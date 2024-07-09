@@ -22,6 +22,10 @@ npm install
 npm run dev
 ```
 
+Open http://localhost:5173/
+
+Wait for the textalive player to load. The scene should be loaded when the app is ready. Click on the blue menu in the middle to start.
+
 ## More Info
 
 - I recommend viewing on a PC (Chrome or Firefox recommended).

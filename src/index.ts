@@ -2,7 +2,7 @@ import * as THREE from "three"
 import { PointerLockControls } from "three/addons/controls/PointerLockControls.js"
 import { random_spherical_cartesian_coordinate } from "./utils/spherical"
 import gsap from "gsap"
-import { IVideo, IPhrase, Player } from "textalive-app-api"
+import { IVideo, IPhrase, Player, IChord } from "textalive-app-api"
 
 const media = document.querySelector("#media")! as HTMLElement
 
@@ -58,7 +58,10 @@ player.addListener({
 
 const threeJS = () => {
 	// CONFIG
-	const NUM_PARTICLES = 5000
+	const NUM_PARTICLES = 1
+	const PER_NEW_PARTICLES = 200
+	let star_count = 0
+	const STAR_LIMIT = 10000 // do you want to crash???
 	const PARTICLE_SIZE = 50
 	const SKY_RADIUS = 7000
 	const POINTS_THRESHOLD = 100
@@ -119,7 +122,7 @@ const threeJS = () => {
 	raycaster.params.Points.threshold = POINTS_THRESHOLD
 	raycaster.params.Line.threshold = LINES_THRESHOLD
 
-	BIGraycaster.params.Points.threshold = 1000
+	BIGraycaster.params.Points.threshold = 5000
 
 	enum DrawMode {
 		VIEW,
@@ -175,6 +178,9 @@ const threeJS = () => {
 	const phrases: IPhrase[] = player.video.phrases
 	let currentPhraseIndex: number = 0
 
+	const chords: IChord[] = player.getChords()
+	let currentChordIndex: number = 0
+
 	/******************** WORLD ********************/
 	const gridHelper = new THREE.GridHelper(50, 50)
 	const cube = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0x39c5bb }))
@@ -183,6 +189,7 @@ const threeJS = () => {
 	scene.add(cube)
 
 	// STARS
+
 	const geometry = new THREE.BufferGeometry()
 	const positions = []
 	const colors = []
@@ -196,7 +203,7 @@ const threeJS = () => {
 		// colors
 		color.setRGB(0, 1, 1)
 		colors.push(color.r, color.g, color.b)
-		sizes[i] = PARTICLE_SIZE * 0.5 
+		sizes[i] = PARTICLE_SIZE * 0.5
 	}
 	geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3))
 	geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3))
@@ -204,8 +211,11 @@ const threeJS = () => {
 
 	const material = new THREE.PointsMaterial({ size: PARTICLE_SIZE, vertexColors: true })
 
+	const starsCollection: Array<THREE.Points> = []
 	const stars = new THREE.Points(geometry, material)
 	scene.add(stars)
+	starsCollection.push(stars)
+	star_count += NUM_PARTICLES
 
 	// LINES
 	const lines: Map<number, THREE.Line> = new Map()
@@ -336,16 +346,30 @@ const threeJS = () => {
 		}
 
 		const currentPosition = player.timer.position
-		if (phrases[currentPhraseIndex].endTime < currentPosition && phrases[(currentPhraseIndex + 1) % phrases.length].startTime < currentPosition) {
-			currentPhraseIndex = (currentPhraseIndex + 1) % phrases.length
-			// console.log(phrases[currentPhraseIndex].text)
+		if (
+			phrases[currentPhraseIndex].endTime < currentPosition &&
+			phrases[(currentPhraseIndex + 1) % phrases.length].startTime < currentPosition &&
+			currentPhraseIndex != phrases.length - 1
+		) {
+			currentPhraseIndex = currentPhraseIndex + 1
+			console.log(phrases[currentPhraseIndex].text)
+			if (star_count < STAR_LIMIT) {
+				generateStars(currentPosition / player.video.duration)
+			}
 		}
-		stars.children.forEach((child) => {
-			console.log(child)
-		})
+
+		// const currentPosition = player.timer.position
+		// if (chords[currentChordIndex].endTime < currentPosition && chords[(currentChordIndex + 1) % chords.length].startTime < currentPosition) {
+		// 	currentChordIndex = (currentChordIndex + 1) % chords.length
+		// 	console.log(chords[currentChordIndex].name)
+		// 	generateStars(currentPosition / player.video.duration)
+		// }
 
 		const time: number = performance.now()
-		stars.rotateY(-0.0001)
+		starsCollection.forEach((s) => {
+			s.rotateY(-0.0001)
+		})
+		// stars.rotateY(-0.0001)
 		lines.forEach((line) => {
 			line.rotateY(-0.0001)
 		})
@@ -359,13 +383,34 @@ const threeJS = () => {
 		renderer.render(scene, camera)
 	}
 
+	function generateStars(percentage: number) {
+		const limit = Math.floor(PER_NEW_PARTICLES * percentage)
+		const new_geometry = new THREE.BufferGeometry()
+		const new_positions = []
+		const new_colors = []
+		const new_sizes = []
+		for (let i = 0; i < limit; i++) {
+			const coords = random_spherical_cartesian_coordinate(SKY_RADIUS)
+			new_positions.push(coords.x, coords.y, coords.z)
+
+			// colors
+			color.setRGB(0, 1, 1)
+			new_colors.push(color.r, color.g, color.b)
+			new_sizes[i] = PARTICLE_SIZE * 0.5
+		}
+		new_geometry.setAttribute("position", new THREE.Float32BufferAttribute(new_positions, 3))
+		new_geometry.setAttribute("color", new THREE.Float32BufferAttribute(new_colors, 3))
+		new_geometry.setAttribute("size", new THREE.Float32BufferAttribute(new_sizes, 1))
+		const new_stars = new THREE.Points(new_geometry, material)
+		scene.add(new_stars)
+		starsCollection.push(new_stars)
+		star_count += limit
+	}
+
 	function starInteractions() {
 		if (drawingMode === DrawMode.PAINT) {
-			let geometry = stars.geometry
-			const attributes = geometry.attributes
-
 			raycaster.setFromCamera(new THREE.Vector2(), camera)
-			const intersects = raycaster.intersectObject(stars, false)
+			const intersects = raycaster.intersectObjects(starsCollection, false)
 
 			if (intersects.length > 0) {
 				// console.log(intersects[0])
